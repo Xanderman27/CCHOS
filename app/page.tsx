@@ -1,65 +1,81 @@
-import Image from "next/image";
+'use client';
 
-export default function Home() {
+import { useEffect } from 'react';
+import { I18nProvider, useI18n } from '@/lib/i18n';
+import RequestForm from '@/components/form/RequestForm';
+import LanguageToggle from '@/components/form/LanguageToggle';
+
+function FormPage() {
+  const { locale, t } = useI18n();
+
+  // Update <html> lang attribute when locale changes
+  useEffect(() => {
+    document.documentElement.lang = locale;
+  }, [locale]);
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
+    <div className="min-h-screen bg-ihc-surface">
+      <div className="max-w-2xl mx-auto px-4 py-8">
+        {/* Skip to main content link */}
+        <a
+          href="#main-form"
+          className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:bg-white focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-ihc-deep focus:rounded-md focus:shadow-lg focus:border focus:border-ihc-light"
+        >
+          Skip to form
+        </a>
+
+        {/* Brand Header */}
+        <header className="mb-8">
+          <div className="flex items-center justify-between mb-6">
+            <img src="/logo-light.png" alt="Intermountain Health" className="h-12 w-auto" />
+            <LanguageToggle />
+          </div>
+          <h1 className="text-xl font-semibold text-ihc-deep">
+            {t('header.title')}
           </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
+          <p className="text-sm text-slate-500 mt-1">
+            {t('header.subtitle')}{' '}
             <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
+              href={t('header.website')}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-ihc-purple underline hover:text-ihc-deep"
             >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+              intermountainhealthcare.org
+            </a>
           </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+          <p className="text-sm text-slate-500 mt-2">
+            {t('header.gunlocks')}{' '}
+            <a
+              href={t('header.gunlocks_url')}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-ihc-purple underline hover:text-ihc-deep"
+            >
+              {locale === 'en' ? 'this website' : 'este sitio web'}
+            </a>
+            .
+          </p>
+        </header>
+
+        {/* Form Card */}
+        <main id="main-form" className="bg-white rounded-lg border border-slate-200 shadow-sm p-6">
+          <RequestForm />
+        </main>
+
+        {/* Footer */}
+        <footer className="mt-6 text-center text-xs text-slate-400">
+          Children&apos;s Community Health &bull; Intermountain Health
+        </footer>
+      </div>
     </div>
+  );
+}
+
+export default function HomePage() {
+  return (
+    <I18nProvider>
+      <FormPage />
+    </I18nProvider>
   );
 }

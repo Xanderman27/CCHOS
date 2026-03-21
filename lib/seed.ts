@@ -1,0 +1,682 @@
+import Database from 'better-sqlite3';
+import path from 'path';
+import fs from 'fs';
+import bcrypt from 'bcryptjs';
+
+const DB_PATH = path.join(process.cwd(), 'data', 'requests.db');
+
+// Ensure data directory exists
+fs.mkdirSync(path.join(process.cwd(), 'data'), { recursive: true });
+
+// Remove existing DB for fresh seed
+if (fs.existsSync(DB_PATH)) {
+  fs.unlinkSync(DB_PATH);
+}
+
+const db = new Database(DB_PATH);
+db.pragma('journal_mode = WAL');
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now')),
+    status TEXT DEFAULT 'submitted' CHECK(status IN ('submitted','in_review','approved','fulfilled')),
+    name TEXT NOT NULL,
+    organization TEXT NOT NULL,
+    email TEXT NOT NULL,
+    request_type TEXT NOT NULL CHECK(request_type IN ('mailing','in_person','virtual','pickup')),
+    materials TEXT,
+    shipping_address TEXT,
+    state TEXT,
+    county TEXT,
+    date_needed TEXT,
+    event_date TEXT,
+    start_time TEXT,
+    end_time TEXT,
+    event_address TEXT,
+    event_zip TEXT,
+    indoor_outdoor TEXT,
+    parking_instructions TEXT,
+    target_audience TEXT,
+    estimated_attendees INTEGER,
+    topics TEXT,
+    requestor_attending INTEGER DEFAULT 0,
+    additional_notes TEXT,
+    ai_priority TEXT,
+    ai_tags TEXT,
+    ai_fulfillment_recommendation TEXT,
+    ai_notes_analysis TEXT,
+    ai_geographic_eligible INTEGER,
+    translation_text TEXT,
+    translation_detected_language TEXT,
+    translation_target_language TEXT,
+    admin_notes TEXT,
+    fulfillment_path TEXT,
+    approved_by TEXT,
+    approved_at TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS staff (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    email TEXT NOT NULL UNIQUE,
+    role TEXT NOT NULL DEFAULT 'coordinator',
+    phone TEXT,
+    specialties TEXT,
+    active INTEGER DEFAULT 1,
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS inventory (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    item_id TEXT UNIQUE,
+    name TEXT NOT NULL,
+    category TEXT NOT NULL,
+    quantity INTEGER NOT NULL DEFAULT 0,
+    low_stock_threshold INTEGER NOT NULL DEFAULT 50,
+    unit TEXT NOT NULL DEFAULT 'units',
+    notes TEXT,
+    updated_at TEXT DEFAULT (datetime('now'))
+  );
+`);
+
+// Add assigned_staff_id column
+db.exec('ALTER TABLE requests ADD COLUMN assigned_staff_id INTEGER');
+
+const insert = db.prepare(`
+  INSERT INTO requests (
+    created_at, status, name, organization, email, request_type,
+    materials, shipping_address, state, county, date_needed,
+    event_date, start_time, end_time, event_address, event_zip,
+    indoor_outdoor, parking_instructions, target_audience,
+    estimated_attendees, topics, requestor_attending, additional_notes,
+    ai_priority, ai_tags, ai_fulfillment_recommendation,
+    ai_notes_analysis, ai_geographic_eligible,
+    admin_notes, fulfillment_path, approved_by, approved_at
+  ) VALUES (
+    @created_at, @status, @name, @organization, @email, @request_type,
+    @materials, @shipping_address, @state, @county, @date_needed,
+    @event_date, @start_time, @end_time, @event_address, @event_zip,
+    @indoor_outdoor, @parking_instructions, @target_audience,
+    @estimated_attendees, @topics, @requestor_attending, @additional_notes,
+    @ai_priority, @ai_tags, @ai_fulfillment_recommendation,
+    @ai_notes_analysis, @ai_geographic_eligible,
+    @admin_notes, @fulfillment_path, @approved_by, @approved_at
+  )
+`);
+
+const seedData = [
+  // 1. Fulfilled mailing request
+  {
+    created_at: '2026-02-15 09:30:00',
+    status: 'fulfilled',
+    name: 'Maria Gonzalez',
+    organization: 'Salt Lake City Head Start',
+    email: 'maria.gonzalez@slcheadstart.org',
+    request_type: 'mailing',
+    materials: JSON.stringify([
+      { itemId: 'spot_tot_cards_es', quantity: 100 },
+      { itemId: 'spot_tot_clings_es', quantity: 50 },
+      { itemId: 'car_seat_cards', quantity: 75 },
+    ]),
+    shipping_address: '1234 South State Street, Salt Lake City, UT 84111',
+    state: 'Utah',
+    county: 'Salt Lake',
+    date_needed: '2026-03-01',
+    event_date: null, start_time: null, end_time: null, event_address: null,
+    event_zip: null, indoor_outdoor: null, parking_instructions: null,
+    target_audience: null, estimated_attendees: null, topics: null,
+    requestor_attending: 0,
+    additional_notes: 'Need Spanish-language materials. We serve primarily Hispanic families.',
+    ai_priority: 'low',
+    ai_tags: JSON.stringify(['mailing', 'car-seat', 'spot-the-tot', 'spanish-language']),
+    ai_fulfillment_recommendation: 'mail',
+    ai_notes_analysis: 'Requestor needs Spanish-language materials for Hispanic family population.',
+    ai_geographic_eligible: 1,
+    admin_notes: 'Shipped via USPS Priority on 2/20',
+    fulfillment_path: 'mail',
+    approved_by: 'Admin',
+    approved_at: '2026-02-16 10:00:00',
+  },
+  // 2. Approved in-person event
+  {
+    created_at: '2026-03-10 14:15:00',
+    status: 'approved',
+    name: 'David Chen',
+    organization: 'Utah Valley Community Center',
+    email: 'dchen@uvcc.org',
+    request_type: 'in_person',
+    materials: null,
+    shipping_address: null, state: null, county: null, date_needed: null,
+    event_date: '2026-04-05',
+    start_time: '10:00',
+    end_time: '14:00',
+    event_address: '500 West Center Street, Provo, UT 84601',
+    event_zip: '84601',
+    indoor_outdoor: 'indoor',
+    parking_instructions: 'Free parking in the rear lot. Enter through the south entrance.',
+    target_audience: JSON.stringify(['families', 'new_parents', 'low_income']),
+    estimated_attendees: 150,
+    topics: JSON.stringify(['car_seats', 'water_safety', 'emotional_wellbeing']),
+    requestor_attending: 1,
+    additional_notes: 'Annual Spring Health Fair. We expect a large turnout from low-income families. Bilingual staff preferred.',
+    ai_priority: 'high',
+    ai_tags: JSON.stringify(['in-person', 'health-fair', 'high-attendance', 'bilingual-needed', 'low-income']),
+    ai_fulfillment_recommendation: 'staff_event',
+    ai_notes_analysis: 'Large community health fair targeting low-income families. Bilingual Spanish-English staff recommended.',
+    ai_geographic_eligible: 1,
+    admin_notes: 'Assigned 2 staff members. Bilingual coordinator confirmed.',
+    fulfillment_path: 'staff_event',
+    approved_by: 'Admin',
+    approved_at: '2026-03-11 09:00:00',
+  },
+  // 3. Submitted (new) mailing request
+  {
+    created_at: '2026-03-20 11:00:00',
+    status: 'submitted',
+    name: 'Jennifer Park',
+    organization: 'Weber County School District',
+    email: 'jpark@weberschools.org',
+    request_type: 'mailing',
+    materials: JSON.stringify([
+      { itemId: 'helmet_cards', quantity: 200 },
+      { itemId: 'pedestrian_cards', quantity: 200 },
+      { itemId: 'vaping_cards', quantity: 150 },
+    ]),
+    shipping_address: '5320 Adams Ave, Ogden, UT 84405',
+    state: 'Utah',
+    county: 'Weber',
+    date_needed: '2026-04-10',
+    event_date: null, start_time: null, end_time: null, event_address: null,
+    event_zip: null, indoor_outdoor: null, parking_instructions: null,
+    target_audience: null, estimated_attendees: null, topics: null,
+    requestor_attending: 0,
+    additional_notes: 'For Bike Safety Week across 12 elementary schools. Need materials by April 10.',
+    ai_priority: 'medium',
+    ai_tags: JSON.stringify(['mailing', 'helmet', 'pedestrian', 'vaping', 'schools']),
+    ai_fulfillment_recommendation: 'mail',
+    ai_notes_analysis: 'Large school district order for Bike Safety Week. Time-sensitive - materials needed by April 10.',
+    ai_geographic_eligible: 1,
+    admin_notes: null,
+    fulfillment_path: null,
+    approved_by: null,
+    approved_at: null,
+  },
+  // 4. In-review virtual event
+  {
+    created_at: '2026-03-18 16:30:00',
+    status: 'in_review',
+    name: 'Dr. Sarah Williams',
+    organization: 'Utah Pediatric Association',
+    email: 'swilliams@utahpeds.org',
+    request_type: 'virtual',
+    materials: null,
+    shipping_address: null, state: null, county: null, date_needed: null,
+    event_date: '2026-04-15',
+    start_time: '12:00',
+    end_time: '13:30',
+    event_address: null,
+    event_zip: null, indoor_outdoor: null, parking_instructions: null,
+    target_audience: JSON.stringify(['professionals']),
+    estimated_attendees: 75,
+    topics: JSON.stringify(['emotional_wellbeing', 'vaping']),
+    requestor_attending: 1,
+    additional_notes: 'Lunch & Learn for pediatric providers. Focus on teen mental health and vaping trends.',
+    ai_priority: 'high',
+    ai_tags: JSON.stringify(['virtual', 'healthcare-providers', 'teen-health', 'professional-education']),
+    ai_fulfillment_recommendation: 'virtual_staff',
+    ai_notes_analysis: 'Professional education session for pediatricians. Focus on teen mental health screening and vaping prevention counseling.',
+    ai_geographic_eligible: 1,
+    admin_notes: 'Reviewing presenter availability',
+    fulfillment_path: null,
+    approved_by: null,
+    approved_at: null,
+  },
+  // 5. Submitted in-person event (urgent - within 5 days)
+  {
+    created_at: '2026-03-20 08:45:00',
+    status: 'submitted',
+    name: 'Carlos Ramirez',
+    organization: 'Rose Park Community Center',
+    email: 'cramirez@rosepark.org',
+    request_type: 'in_person',
+    materials: null,
+    shipping_address: null, state: null, county: null, date_needed: null,
+    event_date: '2026-03-25',
+    start_time: '09:00',
+    end_time: '12:00',
+    event_address: '1104 W 1000 N, Salt Lake City, UT 84116',
+    event_zip: '84116',
+    indoor_outdoor: 'outdoor',
+    parking_instructions: 'Street parking available on 1000 North',
+    target_audience: JSON.stringify(['families', 'children_k8', 'underserved']),
+    estimated_attendees: 80,
+    topics: JSON.stringify(['water_safety', 'pedestrian', 'spot_the_tot']),
+    requestor_attending: 1,
+    additional_notes: 'Community safety day. Many families in the area are recent immigrants. Spanish speakers needed.',
+    ai_priority: 'urgent',
+    ai_tags: JSON.stringify(['in-person', 'urgent', 'outdoor', 'underserved', 'spanish-needed', 'immigrant-community']),
+    ai_fulfillment_recommendation: 'staff_event',
+    ai_notes_analysis: 'Urgent: Event in 5 days. Underserved immigrant community. Spanish-speaking staff essential.',
+    ai_geographic_eligible: 1,
+    admin_notes: null,
+    fulfillment_path: null,
+    approved_by: null,
+    approved_at: null,
+  },
+  // 6. Fulfilled mailing
+  {
+    created_at: '2026-02-01 10:00:00',
+    status: 'fulfilled',
+    name: 'Amanda White',
+    organization: 'Cache Valley Family Resource Center',
+    email: 'awhite@cvfrc.org',
+    request_type: 'mailing',
+    materials: JSON.stringify([
+      { itemId: 'ew_cards_en', quantity: 50 },
+      { itemId: 'ew_magnets_en', quantity: 50 },
+      { itemId: 'ew_workbooks_en', quantity: 30 },
+    ]),
+    shipping_address: '350 N 100 E, Logan, UT 84321',
+    state: 'Utah',
+    county: 'Cache',
+    date_needed: '2026-02-20',
+    event_date: null, start_time: null, end_time: null, event_address: null,
+    event_zip: null, indoor_outdoor: null, parking_instructions: null,
+    target_audience: null, estimated_attendees: null, topics: null,
+    requestor_attending: 0,
+    additional_notes: 'For our family therapy waiting rooms across 3 locations.',
+    ai_priority: 'low',
+    ai_tags: JSON.stringify(['mailing', 'emotional-wellbeing', 'therapy', 'waiting-rooms']),
+    ai_fulfillment_recommendation: 'mail',
+    ai_notes_analysis: 'Materials for therapy waiting rooms at 3 locations. Ongoing distribution context.',
+    ai_geographic_eligible: 1,
+    admin_notes: 'Shipped 2/5. Tracking provided.',
+    fulfillment_path: 'mail',
+    approved_by: 'Admin',
+    approved_at: '2026-02-02 08:00:00',
+  },
+  // 7. Submitted - out of state mailing
+  {
+    created_at: '2026-03-19 13:20:00',
+    status: 'submitted',
+    name: 'Lisa Thompson',
+    organization: 'Idaho Falls Community Health',
+    email: 'lthompson@ifch.org',
+    request_type: 'mailing',
+    materials: JSON.stringify([
+      { itemId: 'window_falls_cards', quantity: 100 },
+      { itemId: 'window_falls_clings', quantity: 100 },
+      { itemId: 'spot_tot_cards_en', quantity: 50 },
+    ]),
+    shipping_address: '2055 Channing Way, Idaho Falls, ID 83404',
+    state: 'Idaho',
+    county: 'Bonneville',
+    date_needed: '2026-04-15',
+    event_date: null, start_time: null, end_time: null, event_address: null,
+    event_zip: null, indoor_outdoor: null, parking_instructions: null,
+    target_audience: null, estimated_attendees: null, topics: null,
+    requestor_attending: 0,
+    additional_notes: 'Spring window safety campaign for our community.',
+    ai_priority: 'low',
+    ai_tags: JSON.stringify(['mailing', 'window-falls', 'out-of-state', 'idaho']),
+    ai_fulfillment_recommendation: 'mail',
+    ai_notes_analysis: 'Out-of-state request from Idaho. Standard mailing fulfillment.',
+    ai_geographic_eligible: 0,
+    admin_notes: null,
+    fulfillment_path: null,
+    approved_by: null,
+    approved_at: null,
+  },
+  // 8. Approved in-person - large event
+  {
+    created_at: '2026-03-05 09:00:00',
+    status: 'approved',
+    name: 'Michael Brown',
+    organization: 'Granite School District',
+    email: 'mbrown@graniteschools.org',
+    request_type: 'in_person',
+    materials: null,
+    shipping_address: null, state: null, county: null, date_needed: null,
+    event_date: '2026-04-12',
+    start_time: '08:00',
+    end_time: '15:00',
+    event_address: '2500 South State Street, South Salt Lake, UT 84115',
+    event_zip: '84115',
+    indoor_outdoor: 'indoor',
+    parking_instructions: 'Use visitor parking in Lot B. Check in at main office.',
+    target_audience: JSON.stringify(['children_k8', 'teens_9_12', 'families']),
+    estimated_attendees: 300,
+    topics: JSON.stringify(['helmet', 'atv_safety', 'water_safety', 'vaping']),
+    requestor_attending: 1,
+    additional_notes: 'District-wide health and safety expo. Multiple breakout sessions planned.',
+    ai_priority: 'urgent',
+    ai_tags: JSON.stringify(['in-person', 'school-district', 'high-attendance', 'expo', 'multi-topic']),
+    ai_fulfillment_recommendation: 'staff_event',
+    ai_notes_analysis: 'Very large district-wide expo (300 attendees). Multiple topics requiring several staff. Major resource commitment.',
+    ai_geographic_eligible: 1,
+    admin_notes: 'Full team of 4 staff assigned. Coordinating with 3 breakout rooms.',
+    fulfillment_path: 'staff_event',
+    approved_by: 'Admin',
+    approved_at: '2026-03-06 11:00:00',
+  },
+  // 9. Fulfilled
+  {
+    created_at: '2026-02-20 10:30:00',
+    status: 'fulfilled',
+    name: 'Rachel Kim',
+    organization: 'Wasatch County Library',
+    email: 'rkim@wasatchlibrary.org',
+    request_type: 'in_person',
+    materials: null,
+    shipping_address: null, state: null, county: null, date_needed: null,
+    event_date: '2026-03-30',
+    start_time: '11:00',
+    end_time: '13:00',
+    event_address: '465 E 1200 S, Heber City, UT 84032',
+    event_zip: '84032',
+    indoor_outdoor: 'indoor',
+    parking_instructions: 'Library parking lot',
+    target_audience: JSON.stringify(['families', 'new_parents', 'early_education']),
+    estimated_attendees: 40,
+    topics: JSON.stringify(['car_seats', 'spot_the_tot']),
+    requestor_attending: 1,
+    additional_notes: 'Story time safety event for young families.',
+    ai_priority: 'medium',
+    ai_tags: JSON.stringify(['in-person', 'library', 'young-families', 'story-time']),
+    ai_fulfillment_recommendation: 'staff_event',
+    ai_notes_analysis: 'Family-friendly library event during story time. Small scale, focus on car seat safety for new parents.',
+    ai_geographic_eligible: 1,
+    admin_notes: '1 staff member assigned. Event completed successfully.',
+    fulfillment_path: 'staff_event',
+    approved_by: 'Admin',
+    approved_at: '2026-02-21 09:00:00',
+  },
+  // 10. Submitted mailing
+  {
+    created_at: '2026-03-21 07:00:00',
+    status: 'submitted',
+    name: 'Emily Santos',
+    organization: 'Primary Children\'s Outreach',
+    email: 'esantos@primarychildrens.org',
+    request_type: 'mailing',
+    materials: JSON.stringify([
+      { itemId: 'firearm_cards', quantity: 200 },
+      { itemId: 'ew_cards_en', quantity: 100 },
+      { itemId: 'ew_cards_es', quantity: 100 },
+    ]),
+    shipping_address: '100 N Mario Capecchi Dr, Salt Lake City, UT 84113',
+    state: 'Utah',
+    county: 'Salt Lake',
+    date_needed: '2026-04-01',
+    event_date: null, start_time: null, end_time: null, event_address: null,
+    event_zip: null, indoor_outdoor: null, parking_instructions: null,
+    target_audience: null, estimated_attendees: null, topics: null,
+    requestor_attending: 0,
+    additional_notes: 'For distribution across all PCH clinic waiting rooms. Need bilingual materials.',
+    ai_priority: 'medium',
+    ai_tags: JSON.stringify(['mailing', 'firearm-safety', 'emotional-wellbeing', 'bilingual', 'clinic']),
+    ai_fulfillment_recommendation: 'mail',
+    ai_notes_analysis: 'Hospital clinic waiting room distribution. Bilingual materials needed. Firearm safety focus.',
+    ai_geographic_eligible: 1,
+    admin_notes: null,
+    fulfillment_path: null,
+    approved_by: null,
+    approved_at: null,
+  },
+  // 11. In-review in-person
+  {
+    created_at: '2026-03-17 15:00:00',
+    status: 'in_review',
+    name: 'Robert Patel',
+    organization: 'Tooele County Parks & Recreation',
+    email: 'rpatel@tooelecounty.gov',
+    request_type: 'in_person',
+    materials: null,
+    shipping_address: null, state: null, county: null, date_needed: null,
+    event_date: '2026-05-15',
+    start_time: '16:00',
+    end_time: '20:00',
+    event_address: 'Tooele City Park, 200 W Vine St, Tooele, UT 84074',
+    event_zip: '84074',
+    indoor_outdoor: 'outdoor',
+    parking_instructions: 'Park along Vine Street. Follow signs to event area.',
+    target_audience: JSON.stringify(['families', 'children_k8', 'mixed_community']),
+    estimated_attendees: 200,
+    topics: JSON.stringify(['water_safety', 'atv_safety', 'helmet']),
+    requestor_attending: 1,
+    additional_notes: 'Summer safety kickoff event. Would like interactive demonstrations if possible.',
+    ai_priority: 'high',
+    ai_tags: JSON.stringify(['in-person', 'outdoor', 'summer-safety', 'interactive', 'high-attendance']),
+    ai_fulfillment_recommendation: 'staff_event',
+    ai_notes_analysis: 'Large summer safety event. Interactive demonstrations requested. 200 attendees expected.',
+    ai_geographic_eligible: 1,
+    admin_notes: 'Checking if we can do car seat demos',
+    fulfillment_path: null,
+    approved_by: null,
+    approved_at: null,
+  },
+  // 12. Submitted virtual
+  {
+    created_at: '2026-03-20 16:00:00',
+    status: 'submitted',
+    name: 'Tanisha Jackson',
+    organization: 'Utah Foster Care',
+    email: 'tjackson@utahfostercare.org',
+    request_type: 'virtual',
+    materials: null,
+    shipping_address: null, state: null, county: null, date_needed: null,
+    event_date: '2026-04-20',
+    start_time: '18:00',
+    end_time: '19:30',
+    event_address: null,
+    event_zip: null, indoor_outdoor: null, parking_instructions: null,
+    target_audience: JSON.stringify(['adults', 'new_parents']),
+    estimated_attendees: 30,
+    topics: JSON.stringify(['emotional_wellbeing', 'car_seats']),
+    requestor_attending: 1,
+    additional_notes: 'Training for new foster parents. Evening session works best for our families.',
+    ai_priority: 'medium',
+    ai_tags: JSON.stringify(['virtual', 'foster-care', 'parent-training', 'evening-session']),
+    ai_fulfillment_recommendation: 'virtual_staff',
+    ai_notes_analysis: 'Foster parent training. Evening session preferred. Focus on home safety and car seat education.',
+    ai_geographic_eligible: 1,
+    admin_notes: null,
+    fulfillment_path: null,
+    approved_by: null,
+    approved_at: null,
+  },
+  // 13. Fulfilled in-person (past)
+  {
+    created_at: '2026-01-15 10:00:00',
+    status: 'fulfilled',
+    name: 'Steven Nguyen',
+    organization: 'Davis County Health Department',
+    email: 'snguyen@daviscounty.gov',
+    request_type: 'in_person',
+    materials: null,
+    shipping_address: null, state: null, county: null, date_needed: null,
+    event_date: '2026-02-10',
+    start_time: '09:00',
+    end_time: '11:00',
+    event_address: '22 S State St, Clearfield, UT 84015',
+    event_zip: '84015',
+    indoor_outdoor: 'indoor',
+    parking_instructions: 'Front lot',
+    target_audience: JSON.stringify(['adults', 'professionals']),
+    estimated_attendees: 50,
+    topics: JSON.stringify(['firearm_safety', 'emotional_wellbeing']),
+    requestor_attending: 1,
+    additional_notes: null,
+    ai_priority: 'medium',
+    ai_tags: JSON.stringify(['in-person', 'health-department', 'professional']),
+    ai_fulfillment_recommendation: 'staff_event',
+    ai_notes_analysis: null,
+    ai_geographic_eligible: 1,
+    admin_notes: 'Event completed successfully. Good turnout.',
+    fulfillment_path: 'staff_event',
+    approved_by: 'Admin',
+    approved_at: '2026-01-16 09:00:00',
+  },
+  // 14. Submitted mailing (Spanish materials)
+  {
+    created_at: '2026-03-21 09:30:00',
+    status: 'submitted',
+    name: 'Ana Flores',
+    organization: 'Comunidades Unidas',
+    email: 'aflores@cuutah.org',
+    request_type: 'mailing',
+    materials: JSON.stringify([
+      { itemId: 'spot_tot_cards_es', quantity: 150 },
+      { itemId: 'spot_tot_clings_es', quantity: 150 },
+      { itemId: 'ew_cards_es', quantity: 100 },
+      { itemId: 'ew_magnets_es', quantity: 100 },
+      { itemId: 'ew_workbooks_es', quantity: 50 },
+    ]),
+    shipping_address: '1750 W Research Way #102, West Valley City, UT 84119',
+    state: 'Utah',
+    county: 'Salt Lake',
+    date_needed: '2026-04-05',
+    event_date: null, start_time: null, end_time: null, event_address: null,
+    event_zip: null, indoor_outdoor: null, parking_instructions: null,
+    target_audience: null, estimated_attendees: null, topics: null,
+    requestor_attending: 0,
+    additional_notes: 'Necesitamos todos los materiales en español. Para distribución en nuestros programas comunitarios.',
+    ai_priority: 'medium',
+    ai_tags: JSON.stringify(['mailing', 'spanish-only', 'community-programs', 'emotional-wellbeing', 'spot-the-tot']),
+    ai_fulfillment_recommendation: 'mail',
+    ai_notes_analysis: 'All-Spanish materials order for community programs serving Hispanic/Latino families.',
+    ai_geographic_eligible: 1,
+    admin_notes: null,
+    fulfillment_path: null,
+    approved_by: null,
+    approved_at: null,
+  },
+  // 15. In-person event - Washington County
+  {
+    created_at: '2026-03-14 11:00:00',
+    status: 'in_review',
+    name: 'James Cooper',
+    organization: 'Dixie Regional Medical Center',
+    email: 'jcooper@dixieregional.org',
+    request_type: 'in_person',
+    materials: null,
+    shipping_address: null, state: null, county: null, date_needed: null,
+    event_date: '2026-04-25',
+    start_time: '10:00',
+    end_time: '16:00',
+    event_address: '1380 E Medical Center Dr, St George, UT 84790',
+    event_zip: '84790',
+    indoor_outdoor: 'indoor',
+    parking_instructions: 'Use the west parking garage. Event is in Conference Room A.',
+    target_audience: JSON.stringify(['families', 'adults', 'new_parents']),
+    estimated_attendees: 120,
+    topics: JSON.stringify(['car_seats', 'window_falls', 'water_safety', 'emotional_wellbeing']),
+    requestor_attending: 1,
+    additional_notes: 'Annual community health day. Located in southern Utah - please confirm staff availability for travel.',
+    ai_priority: 'high',
+    ai_tags: JSON.stringify(['in-person', 'medical-center', 'southern-utah', 'travel-required', 'multi-topic']),
+    ai_fulfillment_recommendation: 'staff_event',
+    ai_notes_analysis: 'Southern Utah event requiring staff travel. Large attendance expected. Multiple topics. Confirm travel logistics.',
+    ai_geographic_eligible: 1,
+    admin_notes: 'Need to confirm travel budget for St. George trip',
+    fulfillment_path: null,
+    approved_by: null,
+    approved_at: null,
+  },
+];
+
+const insertMany = db.transaction(() => {
+  for (const data of seedData) {
+    insert.run(data);
+  }
+});
+
+insertMany();
+
+// Insert default settings
+db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run(
+  'service_area',
+  JSON.stringify({
+    states: ['Utah'],
+    counties: [
+      'Beaver','Box Elder','Cache','Carbon','Daggett','Davis','Duchesne','Emery',
+      'Garfield','Grand','Iron','Juab','Kane','Millard','Morgan','Piute','Rich',
+      'Salt Lake','San Juan','Sanpete','Sevier','Summit','Tooele','Uintah','Utah',
+      'Wasatch','Washington','Wayne','Weber',
+    ],
+  })
+);
+
+// --- Seed Inventory ---
+db.exec(`
+  CREATE TABLE IF NOT EXISTS inventory (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    item_id TEXT UNIQUE,
+    name TEXT NOT NULL,
+    category TEXT NOT NULL,
+    quantity INTEGER NOT NULL DEFAULT 0,
+    low_stock_threshold INTEGER NOT NULL DEFAULT 50,
+    unit TEXT NOT NULL DEFAULT 'units',
+    notes TEXT,
+    updated_at TEXT DEFAULT (datetime('now'))
+  );
+`);
+
+const insertInventory = db.prepare(`
+  INSERT OR IGNORE INTO inventory (item_id, name, category, quantity, low_stock_threshold, unit, notes)
+  VALUES (@item_id, @name, @category, @quantity, @low_stock_threshold, @unit, @notes)
+`);
+
+const inventoryItems = [
+  { item_id: 'car_seat_cards', name: 'Car Seat safety cards', category: 'Car Seat Safety', quantity: 450, low_stock_threshold: 100, unit: 'cards', notes: null },
+  { item_id: 'spot_tot_cards_en', name: 'Spot the Tot & Forget Me Not safety cards', category: 'Spot the Tot & Forget Me Not', quantity: 320, low_stock_threshold: 100, unit: 'cards', notes: null },
+  { item_id: 'spot_tot_cards_es', name: 'Spot the Tot & Forget Me Not safety cards (SPANISH)', category: 'Spot the Tot & Forget Me Not', quantity: 180, low_stock_threshold: 50, unit: 'cards', notes: null },
+  { item_id: 'spot_tot_clings_en', name: 'Spot the Tot & Forget Me Not window clings', category: 'Spot the Tot & Forget Me Not', quantity: 75, low_stock_threshold: 50, unit: 'clings', notes: 'Reorder placed 3/10' },
+  { item_id: 'spot_tot_clings_es', name: 'Spot the Tot & Forget Me Not window clings (SPANISH)', category: 'Spot the Tot & Forget Me Not', quantity: 40, low_stock_threshold: 50, unit: 'clings', notes: 'Low — reorder needed' },
+  { item_id: 'window_falls_cards', name: 'Window Falls safety cards', category: 'Window Falls Prevention', quantity: 250, low_stock_threshold: 75, unit: 'cards', notes: null },
+  { item_id: 'window_falls_clings', name: 'Window Falls window clings', category: 'Window Falls Prevention', quantity: 0, low_stock_threshold: 50, unit: 'clings', notes: 'Out of stock — on backorder' },
+  { item_id: 'helmet_cards', name: 'Wear Your Helmet safety cards', category: 'Helmet Safety', quantity: 500, low_stock_threshold: 100, unit: 'cards', notes: null },
+  { item_id: 'atv_cards', name: 'ATV Safety cards', category: 'ATV Safety', quantity: 200, low_stock_threshold: 50, unit: 'cards', notes: null },
+  { item_id: 'water_safety_cards', name: 'Water Safety cards', category: 'Water Safety', quantity: 350, low_stock_threshold: 100, unit: 'cards', notes: null },
+  { item_id: 'water_watcher_card', name: 'Water Watcher Card', category: 'Water Safety', quantity: 120, low_stock_threshold: 50, unit: 'cards', notes: null },
+  { item_id: 'pedestrian_cards', name: 'Pedestrian Safety cards', category: 'Pedestrian Safety', quantity: 280, low_stock_threshold: 75, unit: 'cards', notes: null },
+  { item_id: 'ew_cards_en', name: 'Emotional Wellbeing safety cards', category: 'Emotional Wellbeing', quantity: 150, low_stock_threshold: 50, unit: 'cards', notes: null },
+  { item_id: 'ew_cards_es', name: 'Emotional Wellbeing safety cards (SPANISH)', category: 'Emotional Wellbeing', quantity: 30, low_stock_threshold: 50, unit: 'cards', notes: 'Running low' },
+  { item_id: 'ew_magnets_en', name: 'Emotional Wellbeing magnets (Feelings Wheel)', category: 'Emotional Wellbeing', quantity: 90, low_stock_threshold: 30, unit: 'magnets', notes: null },
+  { item_id: 'ew_magnets_es', name: 'Emotional Wellbeing magnets (Feelings Wheel) (SPANISH)', category: 'Emotional Wellbeing', quantity: 45, low_stock_threshold: 30, unit: 'magnets', notes: null },
+  { item_id: 'ew_workbooks_en', name: 'Emotional Wellbeing workbooks', category: 'Emotional Wellbeing', quantity: 60, low_stock_threshold: 25, unit: 'workbooks', notes: null },
+  { item_id: 'ew_workbooks_es', name: 'Emotional Wellbeing workbooks (SPANISH)', category: 'Emotional Wellbeing', quantity: 0, low_stock_threshold: 25, unit: 'workbooks', notes: 'Out of stock — new print run scheduled' },
+  { item_id: 'firearm_cards', name: 'Firearm Safety cards', category: 'Firearm Safety', quantity: 400, low_stock_threshold: 100, unit: 'cards', notes: null },
+  { item_id: 'vaping_cards', name: 'Vaping Prevention cards', category: 'Vaping Prevention', quantity: 220, low_stock_threshold: 75, unit: 'cards', notes: null },
+];
+
+for (const item of inventoryItems) {
+  insertInventory.run(item);
+}
+
+// --- Seed Users ---
+db.exec(`
+  CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    display_name TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+`);
+
+const insertUser = db.prepare(
+  'INSERT OR IGNORE INTO users (username, password_hash, display_name) VALUES (?, ?, ?)'
+);
+insertUser.run('admin', bcrypt.hashSync('admin123', 10), 'Admin');
+
+console.log(`Seeded ${seedData.length} requests, ${inventoryItems.length} inventory items, and 1 admin user successfully.`);
+console.log('Default login: admin / admin123');
+db.close();
