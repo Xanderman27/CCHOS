@@ -30,8 +30,7 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# database
-/data/*.db
+# database runtime files (keep .db for demo data)
 /data/*.db-wal
 /data/*.db-shm
 
