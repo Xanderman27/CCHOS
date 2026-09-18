@@ -115,4 +115,4 @@ lib/
 data/requests.db    seeded demo database
 ```
 
-Built at an Intermountain Health hackathon, March 2026.
+🥈 **2nd place** — Intermountain Health Generative AI Hackathon, March 2026.
